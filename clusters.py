@@ -3,7 +3,7 @@
 """
 Created on Tue Aug 13 14:57:42 2019
 
-@author: pkostako
+@author: pkostakos #Draft
 """
 
 import urllib.request
