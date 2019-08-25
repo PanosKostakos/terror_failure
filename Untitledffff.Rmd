@@ -1,0 +1,288 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+#Import Global Terrorism Database from:
+# www.kaggle.com/panoskostakos/terrorism-gtd
+options(scipen=999)
+data <-read.csv("data.csv", header = TRUE)
+
+
+data <-data[,c("iyear","imonth","iday","extended","country","region","vicinity","targtype1",
+      "targsubtype1","property","crit1","crit2","crit3","doubtterr",
+      "guncertain1","multiple","success","suicide","attacktype1",
+      "weaptype1","individual","nkill","INT_MISC")]
+
+#Deal with NaN's
+data$region[data$region %in% c(-9,99) ] <- NA 
+data$vicinity[data$vicinity %in% c(-9,99) ] <- NA 
+data$targtype1[data$targtype1 %in% c(-9,99) ] <- NA 
+data$property[data$property %in% c(-9,99) ] <- NA 
+data$doubtterr[data$doubtterr %in% c(-9,99) ] <- NA 
+data$INT_MISC[data$INT_MISC %in% c(-9,99) ] <- NA 
+data$targsubtype1[data$targsubtype1 %in% c(-9,99) ] <- NA 
+
+
+data<-na.omit(data)
+data$success<- as.factor(data$success)
+levels(data$success) <-c('Failed', 'Successful')
+
+library(dplyr)
+group1 <- filter(data, data$country %in% c(95,153,4,92))
+group2 <- filter(data, !data$country %in% c(95,153,4,92))
+
+```
+```{r}
+
+#Group 1#
+# Use caret library to create a 70/30 split of the training data, keeping the 
+#propoertions of the failed attacks the same accross splits
+
+
+library(caret)
+set.seed(111)
+partitionRule <- createDataPartition(group1$success, p=0.7,time = 1, list =F)
+trainingSet <-group1[partitionRule, ]
+validationSet <-group1[-partitionRule, ]
+```
+```{r}
+
+#Random Forest model: Default params
+library(randomForest)
+rf <- randomForest(success~., data = trainingSet)
+print(rf)
+
+#Error rate in the RF model, determine how many trees using the default parameters
+plot(rf)
+
+```
+
+```{r}
+
+#Tune mtry to find the best mtry value
+t <- tuneRF(trainingSet[,-17], trainingSet[,17],
+            stepFactor = 0.5,
+            plot = TRUE,
+            ntreeTry = 200,
+            trace = TRUE,
+            improve = TRUE)
+```
+```{r}
+#Tuned Random Forest model
+#Print OOB error
+rf <- randomForest(success~., data = trainingSet,
+                   ntree = 200,
+                   mtry = 8,
+                   importance = TRUE,
+                   proximity = TRUE
+                   )
+
+print(rf)
+```
+```{r}
+# Variable Importance
+varImpPlot(rf,
+           sort = T,
+           main = "All - Variable Importance")
+
+importance(rf)
+varUsed(rf)
+```
+```{r}
+# Partial Dependence Plot
+#See misslasifications of specific varibles
+partialPlot(rf, trainingSet, country, "Failed")
+```
+```{r}
+# Extract Single Tree : for details see here: https://rdrr.io/cran/randomForest/man/getTree.html
+getTree(rf, 1, labelVar = TRUE)
+```
+```{r}
+#predicr with training data
+library(caret)
+p1 <- predict(rf, trainingSet)
+confusionMatrix(p1, trainingSet$success)
+```
+```{r}
+#Predict with validation data
+p2 <- predict(rf, validationSet)
+confusionMatrix(p2, validationSet$success)
+```
+```{r}
+
+
+#####GROUP 2#########
+# Use caret library to create a 70/30 split of the training data, keeping the 
+#propoertions of the failed attacks the same accross splits
+
+
+library(caret)
+set.seed(111)
+partitionRule2 <- createDataPartition(group2$success, p=0.7,time = 1, list =F)
+trainingSet2 <-group2[partitionRule2, ]
+validationSet2 <-group2[-partitionRule2, ]
+```
+```{r}
+
+#Random Forest model: Default params (500 trees and 4 splits)
+library(randomForest)
+rf2 <- randomForest(success~., data = trainingSet2)
+print(rf2)
+```
+
+```{r}
+#Error rate in the RF model, determine how many trees using the default parameters
+plot(rf2)
+```
+```{r}
+#Tune mtry to find the best mtry value
+t2 <- tuneRF(trainingSet2[,-17], trainingSet2[,17],
+             stepFactor = 0.5,
+             plot = TRUE,
+             ntreeTry = 300,
+             trace = TRUE,
+             improve = TRUE
+             )
+
+print(t2)
+```
+
+```{r}
+#Tuned Random Forest model
+#Print OOB error
+rf2 <- randomForest(success~., data = trainingSet2,
+                   ntree = 300,
+                   mtry = 4,
+                   importance = TRUE
+                   )
+
+print(rf2)
+```
+
+```{r}
+# No. of nodes for the trees
+hist(treesize(rf2, terminal=TRUE),
+     main = "No. of Nodes for the Trees",
+     col = "green")
+```
+```{r}
+# Variable Importance
+varImpPlot(rf2,
+           sort = T,
+           main = "All - Variable Importance")
+```
+```{r}
+importance(rf2)
+varUsed(rf2)
+```
+```{r}
+# Partial Dependence Plot
+#See misslasifications of outcomes on specific varibles
+partialPlot(rf2, trainingSet2, country, "Failed")
+```
+```{r}
+#Extract Single Tree : for details see here: https://rdrr.io/cran/randomForest/man/getTree.html
+getTree(rf2, 1, labelVar = TRUE)
+```
+```{r}
+#predict with training dataset
+library(caret)
+p1b <- predict(rf2, trainingSet2)
+confusionMatrix(p1b, trainingSet2$success)
+```
+```{r}
+#Predict with validation dataset
+p2b <- predict(rf2, validationSet2)
+confusionMatrix(p2b, validationSet2$success)
+```
+```{r}
+library(caret)
+set.seed(111)
+partitionRule3 <- createDataPartition(data$success, p=0.7,time = 1, list =F)
+trainingSet3 <-data[partitionRule3, ]
+validationSet3 <-group2[-partitionRule3, ]
+
+
+#Random Forest model: Default params
+library(randomForest)
+rf3 <- randomForest(success~., data = trainingSet3)
+print(rf3)
+
+#Error rate in the RF model, determine how many trees using the default parameters
+plot(rf3)
+```
+```{r}
+#Tune mtry to find the best mtry value
+t3 <- tuneRF(trainingSet3[,-17], trainingSet3[,17],
+             stepFactor = 0.5,
+             plot = TRUE,
+             ntreeTry = 150,
+             trace = TRUE,
+             improve = TRUE
+             )
+```
+```{r}
+
+#Tuned Random Forest model
+#Print OOB error
+rf3 <- randomForest(success~., data = trainingSet3,
+                   ntree = 150,
+                   mtry = 8,
+                   importance = TRUE
+                   )
+print(rf3)
+```
+
+```{r}
+# No. of nodes for the trees
+hist(treesize(rf3, terminal=TRUE),
+     main = "No. of Nodes for the Trees",
+     col = "green")
+
+```
+
+```{r}
+# Variable Importance
+varImpPlot(rf3,
+           sort = T,
+           main = "All - Variable Importance")
+
+```
+```{r}
+importance(rf3)
+varUsed(rf3)
+```
+
+```{r}
+# Partial Dependence Plot
+#See misslasifications of outcomes on specific varibles
+partialPlot(rf3, trainingSet3, country, "Failed")
+
+```
+```{r}
+ #Extract Single Tree : for details see here: https://rdrr.io/cran/randomForest/man/getTree.html
+getTree(rf2, 1, labelVar = TRUE)
+
+```
+```{r}
+
+# Multi-dimensional Scaling Plot of Proximity Matrix
+#Proximity: how often two data points end in the same terminal node for different trees.
+#If two cases occupy the same terminal node through one tree, their proximity is increased by one.
+#MDSplot(rf, trainingSet$success)
+
+
+#predicr with training data
+library(caret)
+p_all_1 <- predict(rf3, trainingSet3)
+confusionMatrix(p_all_1, trainingSet3$success)
+```
+```{r}
+#Predict with validation data
+p_all_2 <- predict(rf3, validationSet3)
+confusionMatrix(p_all_2, validationSet3$success)
+```
+
